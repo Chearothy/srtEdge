@@ -723,18 +723,42 @@ function addLines(lines) {
   toast(clean.length + ' line' + (clean.length > 1 ? 's' : '') + ' added');
 }
 
-function addRow() {
+// function addRow() {
+//   pushUndo();
+//   let at = state.rows.length;
+//   for (let i = state.rows.length - 1; i >= 0; i--) if (state.rows[i].sel) { at = i + 1; break; }
+//   const prev = state.rows[at - 1];
+//   const start = prev && prev.end != null ? prev.end : null;
+//   const r = newRow({ start, end: start != null ? start + 2000 : null });
+//   state.rows.splice(at, 0, r);
+//   renderAll();
+//   const e = els.get(r.id);
+//   if (e) { e.scrollIntoView({ block: 'center', behavior: 'smooth' }); e.querySelector('.f-text').focus({ preventScroll: true }); }
+// }
+
+/**
+ * Plain text → timed subtitles. One line = one subtitle; the duration is estimated from the
+ * text length (≈ 12 characters per second, min 1.5 s, max 10 s) with a 0.2 s gap, starting
+ * after the last line already in the table (or at 00:00:00,000). Use "Export SRT" to save it.
+ */
+function textToSrt(lines) {
+  const clean = lines.map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  if (!clean.length) { toast('Nothing to convert. Paste some text first.'); return; }
   pushUndo();
-  let at = state.rows.length;
-  for (let i = state.rows.length - 1; i >= 0; i--) if (state.rows[i].sel) { at = i + 1; break; }
-  const prev = state.rows[at - 1];
-  const start = prev && prev.end != null ? prev.end : null;
-  const r = newRow({ start, end: start != null ? start + 2000 : null });
-  state.rows.splice(at, 0, r);
+  const last = state.rows.length ? state.rows[state.rows.length - 1] : null;
+  let t = last && last.end != null ? last.end + 200 : 0;
+  const rows = clean.map((text) => {
+    const dur = Math.min(10000, Math.max(1500, len(text) * 80));
+    const r = newRow({ text, start: t, end: t + dur });
+    t += dur + 200;
+    return r;
+  });
+  state.rows = state.rows.concat(rows);
   renderAll();
-  const e = els.get(r.id);
-  if (e) { e.scrollIntoView({ block: 'center', behavior: 'smooth' }); e.querySelector('.f-text').focus({ preventScroll: true }); }
+  toast(rows.length + ' line' + (rows.length > 1 ? 's' : '') + ' converted to timed subtitles · use "Export SRT" to save');
 }
+
+
 
 function mergeSelected() {
   const sel = state.rows.filter((r) => r.sel);
@@ -893,10 +917,11 @@ $('importMore').onclick = () => $('srtMore').click();
 $('srtMore').addEventListener('change', function () { loadSrtFile(this.files && this.files[0], true); this.value = ''; });
 $('srtFile').addEventListener('change', function () { loadSrtFile(this.files && this.files[0], false); this.value = ''; });
 $('pasteAdd').onclick = () => { addLines($('pasteText').value.split(/\r?\n/)); $('pasteText').value = ''; };
-$('pasteClip').onclick = async () => {
-  try { const t = await navigator.clipboard.readText(); if (t) $('pasteText').value = t; else toast('The clipboard is empty.'); }
-  catch { toast('Your browser blocked clipboard access. Long-press the box and choose Paste.'); $('pasteText').focus(); }
-};
+// $('pasteClip').onclick = async () => {
+//   try { const t = await navigator.clipboard.readText(); if (t) $('pasteText').value = t; else toast('The clipboard is empty.'); }
+//   catch { toast('Your browser blocked clipboard access. Long-press the box and choose Paste.'); $('pasteText').focus(); }
+// };
+$('pasteSrt').onclick = () => { textToSrt($('pasteText').value.split(/\r?\n/)); $('pasteText').value = ''; };
 $('applyVoice').onclick = () => {
   const v = defaultVoice();
   pushUndo();
