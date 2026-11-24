@@ -287,6 +287,19 @@ if(/[?&]embed=1/.test(location.search))document.documentElement.classList.add('e
     Please don’t use generated speech to impersonate real people or deceive.
   </footer>
 </div>
+   <!-- new code -->
+   <div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="mTitle">
+  <div class="mbox">
+    <h3 id="mTitle">Clear the existing subtitles?</h3>
+    <p id="mText"></p>
+    <div class="mbtns">
+      <button class="btn danger" id="mClear" type="button">🗑 Clear &amp; replace</button>
+      <button class="btn primary" id="mKeep" type="button">＋ Keep &amp; add below</button>
+      <button class="btn" id="mCancel" type="button">Cancel</button>
+    </div>
+  </div>
+</div>
+   <!-- old code  -->
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <!-- ES module: needs http(s) (not file://). The Gradio client is loaded from the CDN inside app.js -->
