@@ -948,12 +948,13 @@ $('clearAll').onclick = () => { pushUndo(); player.pause(); state.playingId = nu
 $('importMore').onclick = () => $('srtMore').click();
 $('srtMore').addEventListener('change', function () { loadSrtFile(this.files && this.files[0], true); this.value = ''; });
 $('srtFile').addEventListener('change', function () { loadSrtFile(this.files && this.files[0], false); this.value = ''; });
-$('pasteAdd').onclick = () => { addLines($('pasteText').value.split(/\r?\n/)); $('pasteText').value = ''; };
-// $('pasteClip').onclick = async () => {
-//   try { const t = await navigator.clipboard.readText(); if (t) $('pasteText').value = t; else toast('The clipboard is empty.'); }
-//   catch { toast('Your browser blocked clipboard access. Long-press the box and choose Paste.'); $('pasteText').focus(); }
-// };
-$('pasteSrt').onclick = () => { textToSrt($('pasteText').value.split(/\r?\n/)); $('pasteText').value = ''; };
+$('pasteAdd').onclick = async () => { if (await addLines($('pasteText').value.split(/\r?\n/))) $('pasteText').value = ''; };
+$('pasteSrt').onclick = async () => { if (await textToSrt($('pasteText').value.split(/\r?\n/))) $('pasteText').value = ''; };
+$('pasteClip').onclick = async () => {
+  try { const t = await navigator.clipboard.readText(); if (t) $('pasteText').value = t; else toast('The clipboard is empty.'); }
+  catch { toast('Your browser blocked clipboard access. Long-press the box and choose Paste.'); $('pasteText').focus(); }
+};
+// $('pasteSrt').onclick = () => { textToSrt($('pasteText').value.split(/\r?\n/)); $('pasteText').value = ''; };
 $('applyVoice').onclick = () => {
   const v = defaultVoice();
   pushUndo();
