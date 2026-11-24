@@ -1,4 +1,4 @@
-/* =====================================================================
+f/* =====================================================================
  * Khmer TTS Studio — 100% client-side (no server, no build step)
  *
  *   • Bring-Your-Own-Token (BYOT) with automatic rotation on quota / 429
@@ -694,6 +694,36 @@ function restoreRows() {
  * ------------------------------------------------------------------- */
 const growTa = (ta) => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight + 2, 240) + 'px'; };
 
+
+/** Asks what to do with the lines already in the table → 'replace' | 'append' | 'cancel'. */
+function askClear() {
+  const n = state.rows.length;
+  if (!n) return Promise.resolve('append');                // empty table: nothing to ask
+  const audio = state.rows.filter(hasAudio).length;
+  $('mText').textContent = 'The table already has ' + n + ' line' + (n > 1 ? 's' : '') +
+    (audio ? ' (' + audio + ' with audio)' : '') + '. Do you want to clear them first?';
+  const m = $('modal');
+  m.hidden = false;
+  $('mClear').focus();
+  return new Promise((resolve) => {
+    const finish = (v) => { m.hidden = true; document.removeEventListener('keydown', onKey); resolve(v); };
+    const onKey = (e) => { if (e.key === 'Escape') finish('cancel'); };
+    document.addEventListener('keydown', onKey);
+    $('mClear').onclick = () => finish('replace');
+    $('mKeep').onclick = () => finish('append');
+    $('mCancel').onclick = () => finish('cancel');
+    m.onclick = (e) => { if (e.target === m) finish('cancel'); };
+  });
+}
+
+/** Puts new rows into the table, either replacing everything or appending. (Undo keeps the old table.) */
+function placeRows(rows, mode) {
+  pushUndo();
+  if (mode === 'replace') { player.pause(); state.playingId = null; state.rows = rows; }
+  else state.rows = state.rows.concat(rows);
+  renderAll();
+}
+
 function loadSrtFile(file, append) {
   clearError();
   if (!file) return;
@@ -701,51 +731,41 @@ function loadSrtFile(file, append) {
   if (file.size > 10 * 1024 * 1024) { showError('That file is larger than 10 MB. Please use a smaller .srt file.'); return; }
   const reader = new FileReader();
   reader.onerror = () => showError('Could not read the file. Please try again.');
-  reader.onload = () => {
+  reader.onload = async () => {
     const cues = parseSrt(reader.result);
     if (!cues.length) { showError('No subtitle text was found in this file. Is it a valid .srt?'); return; }
-    pushUndo();
-    const rows = cues.map((c) => newRow({ start: c.start, end: c.end, text: c.text }));
-    state.rows = append ? state.rows.concat(rows) : rows;
-    renderAll();
-    $('srtInfo').textContent = file.name + ' · ' + cues.length + ' subtitles ' + (append ? 'added' : 'loaded');
-    toast(cues.length + ' subtitles ' + (append ? 'added' : 'loaded'));
+    // "Import another SRT…" always appends; the main upload asks when the table already has lines
+    const mode = append ? 'append' : await askClear();
+    if (mode === 'cancel') { toast('Upload cancelled. Your table was not changed.'); return; }
+    placeRows(cues.map((c) => newRow({ start: c.start, end: c.end, text: c.text })), mode);
+    const verb = (mode === 'append' && state.rows.length > cues.length) ? 'added' : 'loaded';
+    $('srtInfo').textContent = file.name + ' · ' + cues.length + ' subtitles ' + verb;
+    toast(cues.length + ' subtitles ' + verb);
   };
   reader.readAsText(file, 'utf-8');
 }
 
-function addLines(lines) {
+async function addLines(lines) {
   const clean = lines.map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
-  if (!clean.length) { toast('Nothing to add.'); return; }
-  pushUndo();
-  state.rows = state.rows.concat(clean.map((t) => newRow({ text: t })));
-  renderAll();
-  toast(clean.length + ' line' + (clean.length > 1 ? 's' : '') + ' added');
+  if (!clean.length) { toast('Nothing to add.'); return false; }
+  const mode = await askClear();
+  if (mode === 'cancel') return false;
+  placeRows(clean.map((t) => newRow({ text: t })), mode);
+  toast(clean.length + ' line' + (clean.length > 1 ? 's' : '') + (mode === 'replace' ? ' loaded' : ' added'));
+  return true;
 }
-
-// function addRow() {
-//   pushUndo();
-//   let at = state.rows.length;
-//   for (let i = state.rows.length - 1; i >= 0; i--) if (state.rows[i].sel) { at = i + 1; break; }
-//   const prev = state.rows[at - 1];
-//   const start = prev && prev.end != null ? prev.end : null;
-//   const r = newRow({ start, end: start != null ? start + 2000 : null });
-//   state.rows.splice(at, 0, r);
-//   renderAll();
-//   const e = els.get(r.id);
-//   if (e) { e.scrollIntoView({ block: 'center', behavior: 'smooth' }); e.querySelector('.f-text').focus({ preventScroll: true }); }
-// }
 
 /**
  * Plain text → timed subtitles. One line = one subtitle; the duration is estimated from the
- * text length (≈ 12 characters per second, min 1.5 s, max 10 s) with a 0.2 s gap, starting
+ * text length (about 12 characters per second, min 1.5 s, max 10 s) with a 0.2 s gap, starting
  * after the last line already in the table (or at 00:00:00,000). Use "Export SRT" to save it.
  */
-function textToSrt(lines) {
+async function textToSrt(lines) {
   const clean = lines.map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
-  if (!clean.length) { toast('Nothing to convert. Paste some text first.'); return; }
-  pushUndo();
-  const last = state.rows.length ? state.rows[state.rows.length - 1] : null;
+  if (!clean.length) { toast('Nothing to convert. Paste some text first.'); return false; }
+  const mode = await askClear();
+  if (mode === 'cancel') return false;
+  const last = mode === 'append' && state.rows.length ? state.rows[state.rows.length - 1] : null;
   let t = last && last.end != null ? last.end + 200 : 0;
   const rows = clean.map((text) => {
     const dur = Math.min(10000, Math.max(1500, len(text) * 80));
@@ -753,11 +773,23 @@ function textToSrt(lines) {
     t += dur + 200;
     return r;
   });
-  state.rows = state.rows.concat(rows);
-  renderAll();
+  placeRows(rows, mode);
   toast(rows.length + ' line' + (rows.length > 1 ? 's' : '') + ' converted to timed subtitles · use "Export SRT" to save');
+  return true;
 }
 
+function addRow() {
+  pushUndo();
+  let at = state.rows.length;
+  for (let i = state.rows.length - 1; i >= 0; i--) if (state.rows[i].sel) { at = i + 1; break; }
+  const prev = state.rows[at - 1];
+  const start = prev && prev.end != null ? prev.end : null;
+  const r = newRow({ start, end: start != null ? start + 2000 : null });
+  state.rows.splice(at, 0, r);
+  renderAll();
+  const e = els.get(r.id);
+  if (e) { e.scrollIntoView({ block: 'center', behavior: 'smooth' }); e.querySelector('.f-text').focus({ preventScroll: true }); }
+}
 
 
 function mergeSelected() {
